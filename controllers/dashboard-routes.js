@@ -1,16 +1,19 @@
 const router = require("express").Router();
 const sequelize = require("../config/connection");
 const { Post, User, Comment } = require("../models");
+const withAuth = require("../utils/auth");
 
-// get all posts for homepage✅
-router.get("/", (req, res) => {
-  console.log(req.session);
-  console.log("======================");
+// gets all posts for the dashboard
+router.get("/", withAuth, (req, res) => {
   Post.findAll({
+    where: {
+      user_id: req.session.user_id,
+    },
     attributes: [
       "id",
       "post_url",
       "title",
+      "created_at",
       [
         sequelize.literal(
           "(SELECT COUNT(*) FROM vote WHERE post.id = vote.post_id)"
@@ -35,27 +38,15 @@ router.get("/", (req, res) => {
   })
     .then((dbPostData) => {
       const posts = dbPostData.map((post) => post.get({ plain: true }));
-
-      res.render("homepage", { 
-        posts, 
-        loggedIn: req.session.loggedIn
-      });
+      res.render("dashboard", { posts, loggedIn: true });
     })
     .catch((err) => {
       console.log(err);
       res.status(500).json(err);
     });
 });
-// render the login page
-router.get("/login", (req, res) => {
-  if (req.session.loggedIn) {
-    res.redirect("/");
-    return;
-  }
-  res.render("login");
-});
-// renders the single-post page
-router.get("/post/:id", (req, res) => {
+
+router.get("/edit/:id", withAuth, (req, res) => {
   Post.findOne({
     where: {
       id: req.params.id,
@@ -67,7 +58,7 @@ router.get("/post/:id", (req, res) => {
       "created_at",
       [
         sequelize.literal(
-          "(SELECT COUNT (*) FROM vote WHERE post.id = vote.post_id)"
+          "(SELECT COUNT(*) FROM vote WHERE post.id = vote.post_id)"
         ),
         "vote_count",
       ],
@@ -77,29 +68,24 @@ router.get("/post/:id", (req, res) => {
         model: Comment,
         attributes: ["id", "comment_text", "post_id", "user_id"],
         include: {
+          // user for comment
           model: User,
           attributes: ["username"],
         },
       },
       {
+        // user for post
         model: User,
         attributes: ["username"],
       },
     ],
   })
     .then((dbPostData) => {
-      if (!dbPostData) {
-        res.status(404).json({ message: "No post found with this id" });
-        return;
-      }
-
-      // serializes the data
       const post = dbPostData.get({ plain: true });
 
-      // pass data to template
-      res.render("single-post", {
+      res.render("edit-post", {
         post,
-        loggedIn: req.session.loggedIn,
+        loggedIn: true,
       });
     })
     .catch((err) => {
